@@ -144,4 +144,4 @@ st.dataframe(
 )
 
 st.divider()
-st.caption("Data: NYC TLC 2014–2015 | Pipeline: Kafka (KRaft) → PySpark 3.5.1 → DuckDB → dbt 1.11 → Streamlit")
+st.caption("Data: NYC TLC 2014–2015 | Pipeline: Kafka (KRaft) → PySpark 3.5.1 → DuckDB → dbt 1.11 → Streamlit")# deployed Sat Aug 29 19:04:57 PDT 2026
