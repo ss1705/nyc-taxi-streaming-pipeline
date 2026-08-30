@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: stg_taxi_trips
+    description: "Cleaned and renamed raw NYC taxi trips from the Kafka/PySpark pipeline"
+    columns:
+      - name: pickup_datetime
+        description: "Timestamp when the passenger was picked up"
+        tests:
+          - not_null
+      - name: fare_amount
+        description: "Base metered fare in dollars"
+        tests:
+          - not_null
+
+  - name: int_trips_enriched
+    description: "Enriched trips with time-of-day buckets, tip behavior, and fare per mile"
+    columns:
+      - name: time_of_day
+        description: "Categorical bucket: morning_rush, midday, evening_rush, night, overnight"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['morning_rush', 'midday', 'evening_rush', 'night', 'overnight']
+
+  - name: mart_hourly_demand
+    description: "Aggregated trip demand and revenue metrics by hour and day of week"
+    columns:
+      - name: pickup_hour
+        description: "Hour of day 0-23"
+        tests:
+          - not_null
