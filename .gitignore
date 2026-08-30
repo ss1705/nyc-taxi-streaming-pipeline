@@ -1,8 +1,9 @@
 venv/
 warehouse.duckdb
 __pycache__/
-.ivy2.5.2/
 *.pyc
 .DS_Store
+logs/
 dbt_taxi/logs/
 dbt_taxi/target/
+*.duckdb
