@@ -1,70 +1,77 @@
-Kafka: 
-- message broker
-- holds messages in a queue -> topic until PySpark is ready to consume them
-- called decoupling: producer + consumer don't need to know about each other or run at same speed
+# NYC Taxi Demand Pipeline
 
-Pipeline: 
-NYC Taxi API → Kafka → PySpark → Redshift
+A production-style real-time data pipeline built on NYC TLC taxi trip data, demonstrating distributed stream processing from ingestion to interactive dashboard.
 
-Zookeeper:
-- Kafka's coordinator
-- handles: which Kafka broker is the leader, tracks which consumers have read which messages, cluster membership
-- needs to be running for Kafka to work (behind-the-scenes manager)
+**Live demo:** [nyc-taxi-demand.streamlit.app](https://nyc-taxi-demand.streamlit.app) ← update this after deployment
 
-KRaft mode:
-- Kafka runs without Zookeeper entirely
-- one less container, simpler setup
-- Kafka 3.x removed the Zookeeper dependency by handling cluster coordination internally
+## Architecture
 
-Docker commands:
-docker compose up -d: 
-- starts all containers defined in docker-compose.yml
-- "-d" means detached - runs them in background so terminal stays free, otherwise logs would stream in terminal
+NYC TLC API → Kafka (KRaft) → PySpark Structured Streaming → DuckDB → dbt → Streamlit
 
-docker compose down:
-- stops + removes all containers
-- run when done working / before changing config
 
-docker compose ps:
-- lists status fo containers - running/stopped/errored
-- same idea as ps in Unix
+| Layer | Technology | Role |
+|---|---|---|
+| Ingestion | Apache Kafka 3.7 (KRaft) | Message broker, decouples producer from consumer |
+| Producer | Python / Socrata API | Streams trip records into Kafka topic |
+| Processing | PySpark 3.5.1 Structured Streaming | Micro-batch transforms, type casting, feature engineering |
+| Storage | DuckDB | Local columnar data warehouse |
+| Transformation | dbt Core 1.11 | 3-layer SQL models (staging → intermediate → marts) |
+| Dashboard | Streamlit + Altair | Interactive demand and fare analytics |
 
-up = turning on your servers
-down = turning them off
-ps = checking which servers are on right now
+## Pipeline Details
 
-Other:
-docker compose logs kafka — see what Kafka is printing internally, useful for debugging
-docker compose restart kafka — restart just one container without touching the others
+**Producer** (`producer/producer.py`): Pulls NYC TLC trip records from the Socrata open data API and publishes them to a Kafka topic (`taxi-trips`) as JSON-serialized messages, simulating a real-time dispatch event stream.
 
-producer.py
-Kafka setup
-- Kafka producer defined
-- serializing values: convert every Python dict into JSON bytes (Kafka only speaks bytes)
+**Consumer** (`spark/consumer.py`): PySpark Structured Streaming job reads from Kafka every 10 seconds, applies schema validation, filters invalid records (zero coordinates, zero distance), casts all fields to correct types, and engineers three features:
+- `trip_duration_min` — derived from dropoff minus pickup timestamp
+- `pickup_hour` — hour of day (0–23) for demand pattern analysis
+- `pickup_dayofweek` — day of week for weekly seasonality
 
-Fetching data
-- fetch NYC TLC open dataset via Socrata API (pulling 500 most recent taxi trips, ordered by pickup time)
-- remember: always check field names from raw API response returns before writing the script -- we found a mismatch in the pickup_datetime param
+Processed batches are written to DuckDB via `foreachBatch` using a Pandas bridge.
 
-Streaming
-- set time.sleep(0.1) to simulate real-time conditions: one trip every 100ms, i.e., 10 trips per second (behaves likes a live stream)
+**dbt models** (`dbt_taxi/models/`):
+- `stg_taxi_trips` — cleans and renames raw fields, casts coordinates from VARCHAR to DOUBLE
+- `int_trips_enriched` — adds time-of-day buckets, tip rate, fare per mile, weekend flag
+- `mart_hourly_demand` — aggregates trip count, revenue, and duration metrics by hour and day of week
 
-Flush:
-- force to send anything sitting in kafka's buffer before the script exits
-- without this we could lose last few messages
+## Dashboard
 
-Creating Kafka topic:
-docker exec -it data-stack-project1-kafka-1 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server localhost:9092 \
-  --create --topic taxi-trips \
-  --partitions 1 \
-  --replication-factor 1
+Three Altair charts served by Streamlit:
+- **Trip Demand by Hour of Day** — reveals the natural demand rhythm with 3–5am trough and evening peak
+- **Trip Demand by Time of Day** — bucketed into overnight / morning rush / midday / evening rush / night
+- **Average Fare by Time of Day** — overnight fares highest, consistent with longer airport and cross-borough trips
 
-Spark:
-- distributed data processing engine
-- splits work across many machines in a cluster and processes them in parallel
-- horizontally scalable (add more machines to the cluster > buying single bigger machine)
-- PySpark: Python API for Spark
-- two modes: batch mode, structured streaming
-- Batch mode: processes everything, then stops
-- Structured streaming: treats incoming data stream as unbounded table that keeps growing, looks at new messages - processes them - appends results to output, keeps running
+## Key Design Decisions
+
+**Kafka KRaft mode** — eliminated Zookeeper dependency, reducing the local stack to a single container. Modern standard since Kafka 3.3.
+
+**DuckDB over Redshift locally** — identical SQL semantics to Redshift/Snowflake, zero infrastructure cost. dbt models are warehouse-agnostic and would run unchanged against a cloud warehouse by swapping the connection profile.
+
+**PySpark 3.5.1 pinned** — PySpark 4.x released during development but the Kafka connector ecosystem hadn't stabilized. Pinned to 3.5.1 for connector compatibility, matching production patterns where stability is preferred over bleeding-edge versions.
+
+**foreachBatch sink pattern** — standard approach for writing Spark Structured Streaming output to systems without a native Spark connector. Converts each micro-batch to Pandas and uses DuckDB's native DataFrame query API.
+
+## Setup
+
+```bash
+# Start Kafka
+docker compose up -d
+
+# Activate environment
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# Stream data
+python producer/producer.py   # Terminal 1
+python spark/consumer.py      # Terminal 2
+
+# Build dbt models
+cd dbt_taxi && dbt run && dbt test
+
+# Launch dashboard
+cd .. && streamlit run dashboard.py
+```
+
+## Stack
+
+Python 3.11 · Apache Kafka 3.7 (KRaft) · PySpark 3.5.1 · DuckDB 1.5 · dbt Core 1.11 · Streamlit 1.57 · Altair 6.1 · Docker
