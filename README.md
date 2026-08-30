@@ -2,7 +2,7 @@
 
 A production-style real-time data pipeline built on NYC TLC taxi trip data, demonstrating distributed stream processing from ingestion to interactive dashboard.
 
-**Live demo:** [nyc-taxi-demand.streamlit.app](https://nyc-taxi-demand.streamlit.app) ← update this after deployment
+**Live demo:** [NYC Taxi Demand Dashboard](https://nyc-taxi-streaming-pipeline-production.up.railway.app)
 
 ## Architecture
 
