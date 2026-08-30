@@ -13,10 +13,7 @@ st.set_page_config(
 # --- Load data ---
 @st.cache_data
 def load_data():
-    conn = duckdb.connect("warehouse.duckdb")
-    df = conn.execute("SELECT * FROM mart_hourly_demand").df()
-    conn.close()
-    return df
+    return pd.read_csv("mart_hourly_demand.csv")
 
 df = load_data().copy()
 
